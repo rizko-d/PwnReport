@@ -149,72 +149,72 @@ simple JSON-first workflow and remain useful on its own.
 
 Current release:
 
-- ✅ Minimal report schema
-- ✅ `init` and `build` CLI commands
-- ✅ Required-field and severity validation
-- ✅ Duplicate finding ID detection
-- ✅ Severity-based finding ordering
-- ✅ Self-contained dark-theme HTML output
-- ✅ Browser print stylesheet for optional PDF export
-- ✅ Standard-library test suite
+- [x] Minimal report schema
+- [x] `init` and `build` CLI commands
+- [x] Required-field and severity validation
+- [x] Duplicate finding ID detection
+- [x] Severity-based finding ordering
+- [x] Self-contained dark-theme HTML output
+- [x] Browser print stylesheet for optional PDF export
+- [x] Standard-library test suite
 
 ### v0.2 - Manual finding workflow
 
 Make authoring reports easier without introducing a database:
 
-- `pwnreport finding add`
-- `pwnreport finding list`
-- `pwnreport finding show <id>`
-- `pwnreport validate <report.json>`
-- Automatic finding ID generation
-- Safer editing while preserving the JSON schema
+- [ ] `pwnreport finding add`
+- [ ] `pwnreport finding list`
+- [ ] `pwnreport finding show <id>`
+- [ ] `pwnreport validate <report.json>`
+- [ ] Automatic finding ID generation
+- [ ] Safer editing while preserving the JSON schema
 
 ### v0.3 - Better assessment detail
 
 Extend the schema for findings that need more technical context:
 
-- Reproduction steps
-- Evidence file references and screenshots
-- CWE, CVE, and OWASP mappings
-- CVSS vector and score fields
-- Methodology and limitations sections
-- Remediation priority and status
+- [ ] Reproduction steps
+- [ ] Evidence file references and screenshots
+- [ ] CWE, CVE, and OWASP mappings
+- [ ] CVSS vector and score fields
+- [ ] Methodology and limitations sections
+- [ ] Remediation priority and status
 
 ### v0.4 - Scanner importers
 
 Normalize common tool output into the PwnReport schema. Importers should be
 added one at a time with fixtures and tests:
 
-- Nuclei JSONL importer
-- Burp Suite issue export importer
-- Nmap result importer
-- Nessus result importer
-- Generic custom JSON importer
+- [ ] Nuclei JSONL importer
+- [ ] Burp Suite issue export importer
+- [ ] Nmap result importer
+- [ ] Nessus result importer
+- [ ] Generic custom JSON importer
 
 The original source files should remain available in the project workspace so
 the final report can be traced back to the tool output.
 
 ### v0.5 - Professional exports and templates
 
-- Native PDF export
-- Markdown export
-- Table of contents
-- Client logo and branding fields
-- Report metadata and report date
-- Multiple report templates
-- Light and dark themes
+- [ ] Native PDF export
+- [ ] Markdown export
+- [ ] Table of contents
+- [ ] Client logo and branding fields
+- [ ] Report metadata and report date
+- [ ] Multiple report templates
+- [ ] Light and dark themes
 
 ### v1.0 - Reporting workspace
 
 Only after the CLI and schema have matured:
 
-- Multiple projects and report history
-- Reusable finding library
-- Finding deduplication across assessments
-- Scope and asset management
-- Review and approval workflow
-- Optional local web interface
-- Optional team collaboration
+- [ ] Multiple projects and report history
+- [ ] Reusable finding library
+- [ ] Finding deduplication across assessments
+- [ ] Scope and asset management
+- [ ] Review and approval workflow
+- [ ] Optional local web interface
+- [ ] Optional team collaboration
 
 The roadmap does not make PwnReport responsible for reconnaissance or
 exploitation. Scanner and assessment tools remain separate inputs, while
