@@ -149,14 +149,14 @@ simple JSON-first workflow and remain useful on its own.
 
 Current release:
 
-- Minimal report schema
-- `init` and `build` CLI commands
-- Required-field and severity validation
-- Duplicate finding ID detection
-- Severity-based finding ordering
-- Self-contained dark-theme HTML output
-- Browser print stylesheet for optional PDF export
-- Standard-library test suite
+- ✅ Minimal report schema
+- ✅ `init` and `build` CLI commands
+- ✅ Required-field and severity validation
+- ✅ Duplicate finding ID detection
+- ✅ Severity-based finding ordering
+- ✅ Self-contained dark-theme HTML output
+- ✅ Browser print stylesheet for optional PDF export
+- ✅ Standard-library test suite
 
 ### v0.2 - Manual finding workflow
 
