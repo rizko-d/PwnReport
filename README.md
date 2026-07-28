@@ -13,7 +13,7 @@ targets, exploit vulnerabilities, collect credentials, or replace tools such
 as Nmap, Burp Suite, Nessus, Nuclei, or Metasploit. Those tools can remain in
 the assessment workflow while PwnReport becomes the final reporting layer.
 
-The v0.1 workflow is intentionally small:
+The original v0.1 foundation remains intentionally small:
 
 ```text
 init workspace -> edit report.json -> build report.html
@@ -26,13 +26,14 @@ library to the project.
 
 ## What PwnReport Does
 
-The initial release provides a small, predictable reporting pipeline:
+PwnReport provides a small, predictable reporting pipeline:
 
 1. Create a report workspace with `pwnreport init`.
-2. Store engagement information and findings in `report.json`.
-3. Validate required fields, severity values, and unique finding IDs.
-4. Sort findings by severity.
-5. Build a self-contained HTML report with:
+2. Store engagement information in `report.json`.
+3. Add and inspect findings through the CLI or edit the JSON directly.
+4. Validate required fields, severity values, and unique finding IDs.
+5. Sort findings by severity.
+6. Build a self-contained HTML report with:
    - Cover page
    - Engagement information
    - Assessment scope
@@ -46,7 +47,7 @@ from another script, or use as the input for future importers.
 
 ## What PwnReport Does Not Do Yet
 
-The v0.1 release does not include scanner importers, a web interface, a
+The v0.2 release does not include scanner importers, a web interface, a
 database, authentication, CVSS calculation, or native PDF generation. These
 are intentionally deferred until the core JSON-to-HTML workflow is stable.
 
@@ -65,6 +66,8 @@ python3 -m venv .venv
 python -m pip install -e .
 
 pwnreport init demo-report
+pwnreport finding add demo-report/report.json
+pwnreport validate demo-report/report.json
 pwnreport build demo-report/report.json
 ```
 
@@ -77,6 +80,8 @@ Without installing the package, use the module directly:
 ```bash
 PYTHONPATH=src python3 -m pwnreport --help
 PYTHONPATH=src python3 -m pwnreport init demo-report
+PYTHONPATH=src python3 -m pwnreport finding add demo-report/report.json
+PYTHONPATH=src python3 -m pwnreport validate demo-report/report.json
 PYTHONPATH=src python3 -m pwnreport build demo-report/report.json
 ```
 
@@ -85,6 +90,10 @@ PYTHONPATH=src python3 -m pwnreport build demo-report/report.json
 ```bash
 pwnreport --version
 pwnreport init <directory>
+pwnreport validate <report.json>
+pwnreport finding add <report.json>
+pwnreport finding list <report.json>
+pwnreport finding show <report.json> <finding-id>
 pwnreport build <report.json>
 pwnreport build <report.json> --output <report.html>
 ```
@@ -98,6 +107,44 @@ pwnreport build <report.json> --output <report.html>
 ```
 
 The command never overwrites an existing `report.json`.
+
+### Finding workflow
+
+Run `finding add` without field flags to use the interactive prompts:
+
+```bash
+pwnreport finding add demo-report/report.json
+```
+
+For scripts and repeatable automation, provide all fields as flags:
+
+```bash
+pwnreport finding add demo-report/report.json \
+  --title "Missing Content Security Policy" \
+  --severity high \
+  --affected-asset "https://app.example.com" \
+  --description "The application does not return a CSP header." \
+  --impact "Client-side injection can have a wider impact." \
+  --evidence "Content-Security-Policy was absent from the response." \
+  --remediation "Deploy a restrictive Content Security Policy."
+```
+
+PwnReport assigns IDs automatically in `FIND-001` format. It derives the next
+ID from the highest existing numeric finding ID rather than reusing deleted
+numbers.
+
+Inspect and validate findings before building the report:
+
+```bash
+pwnreport finding list demo-report/report.json
+pwnreport finding show demo-report/report.json FIND-001
+pwnreport validate demo-report/report.json
+```
+
+Finding changes are validated before saving. PwnReport writes a temporary file
+beside `report.json`, flushes it to disk, and atomically replaces the original.
+Unknown JSON fields are preserved, so adding a finding does not discard custom
+metadata maintained by another tool.
 
 ## Report schema
 
@@ -147,7 +194,7 @@ simple JSON-first workflow and remain useful on its own.
 
 ### v0.1 - JSON to HTML foundation
 
-Current release:
+Delivered foundation:
 
 - [x] Minimal report schema
 - [x] `init` and `build` CLI commands
@@ -160,14 +207,16 @@ Current release:
 
 ### v0.2 - Manual finding workflow
 
+Current release:
+
 Make authoring reports easier without introducing a database:
 
-- [ ] `pwnreport finding add`
-- [ ] `pwnreport finding list`
-- [ ] `pwnreport finding show <id>`
-- [ ] `pwnreport validate <report.json>`
-- [ ] Automatic finding ID generation
-- [ ] Safer editing while preserving the JSON schema
+- [x] `pwnreport finding add`
+- [x] `pwnreport finding list`
+- [x] `pwnreport finding show <id>`
+- [x] `pwnreport validate <report.json>`
+- [x] Automatic finding ID generation
+- [x] Safer editing while preserving the JSON schema
 
 ### v0.3 - Better assessment detail
 
