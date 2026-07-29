@@ -106,6 +106,12 @@ pwnreport build <report.json> --format all
 pwnreport build <report.json> --format pdf --template executive
 pwnreport build <report.json> --format markdown --theme light
 pwnreport build <report.json> --format html --output custom.html
+pwnreport library search [query]
+pwnreport library show <lib-id>
+pwnreport library save <report.json> <finding-id>
+pwnreport library import <report.json> <lib-id> --affected-asset <asset>
+pwnreport project list
+pwnreport ui [--port 8080]
 ```
 
 `init` creates:
@@ -320,15 +326,15 @@ Delivered:
 
 ### v1.0 - Reporting workspace
 
-Only after the CLI and schema have matured:
+Delivered:
 
-- [ ] Multiple projects and report history
-- [ ] Reusable finding library
-- [ ] Finding deduplication across assessments
-- [ ] Scope and asset management
-- [ ] Review and approval workflow
-- [ ] Optional local web interface
-- [ ] Optional team collaboration
+- [x] Multiple projects and report history
+- [x] Reusable finding library
+- [x] Finding deduplication across assessments
+- [x] Scope and asset management
+- [x] Review and approval workflow
+- [x] Optional local web interface
+- [x] Optional team collaboration
 
 The roadmap does not make PwnReport responsible for reconnaissance or
 exploitation. Scanner and assessment tools remain separate inputs, while

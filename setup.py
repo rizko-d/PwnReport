@@ -10,7 +10,7 @@ long_description = (root / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="pwnreport",
-    version="0.5.0",
+    version="1.0.0",
     description="JSON-first penetration test finding and report manager",
     long_description=long_description,
     long_description_content_type="text/markdown",

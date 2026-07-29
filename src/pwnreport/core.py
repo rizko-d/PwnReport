@@ -89,6 +89,8 @@ def initialize_project(destination: Path) -> Path:
             json.dumps(_default_report(project_name), indent=2) + "\n",
             encoding="utf-8",
         )
+        from .workspace import register_project
+        register_project(report_path)
     except OSError as exc:
         raise PwnReportError(f"Could not initialize project: {exc}") from exc
 
@@ -333,6 +335,8 @@ def save_report(report_path: Path, data: Dict[str, Any]) -> Path:
             os.fsync(handle.fileno())
         os.chmod(temporary_path, original_mode)
         os.replace(temporary_path, destination)
+        from .workspace import register_project
+        register_project(destination)
     except OSError as exc:
         raise PwnReportError(f"Could not safely update report: {exc}") from exc
     finally:

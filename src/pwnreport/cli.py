@@ -27,6 +27,9 @@ from .core import (
     load_report,
     validate_report,
 )
+from .library import get_from_library, save_to_library, search_library
+from .workspace import list_projects
+from .webui import start_server
 
 FIELD_LABELS = {
     "id": "ID",
@@ -133,6 +136,33 @@ def create_parser() -> argparse.ArgumentParser:
         tool_parser = import_subparsers.add_parser(tool, help=help_text)
         tool_parser.add_argument("report", type=Path, help="path to report.json")
         tool_parser.add_argument("source", type=Path, help="scanner export file")
+
+    lib_parser = subparsers.add_parser("library", help="manage reusable finding library")
+    lib_subparsers = lib_parser.add_subparsers(dest="library_command", required=True)
+    
+    lib_search = lib_subparsers.add_parser("search", help="search library findings")
+    lib_search.add_argument("query", nargs="?", default="", help="search term")
+    
+    lib_show = lib_subparsers.add_parser("show", help="show finding from library")
+    lib_show.add_argument("lib_id", help="library ID (e.g. LIB-001)")
+    
+    lib_save = lib_subparsers.add_parser("save", help="save report finding to library")
+    lib_save.add_argument("report", type=Path, help="path to report.json")
+    lib_save.add_argument("finding_id", help="finding ID to save")
+    
+    lib_import = lib_subparsers.add_parser("import", help="import finding from library")
+    lib_import.add_argument("report", type=Path, help="path to report.json")
+    lib_import.add_argument("lib_id", help="library ID (e.g. LIB-001)")
+    lib_import.add_argument("--affected-asset", required=True, help="asset affected by this finding")
+    lib_import.add_argument("--evidence", help="evidence specific to this asset")
+
+    proj_parser = subparsers.add_parser("project", help="manage report workspaces")
+    proj_subparsers = proj_parser.add_subparsers(dest="project_command", required=True)
+    
+    proj_list = proj_subparsers.add_parser("list", help="list all known PwnReport projects")
+
+    ui_parser = subparsers.add_parser("ui", help="start local web interface")
+    ui_parser.add_argument("--port", type=int, default=8080, help="port to run the server on (default: 8080)")
 
     return parser
 
@@ -279,6 +309,65 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             print(f"Preserved source: {result['source']}")
             return 0
+
+        if args.command == "library":
+            if args.library_command == "search":
+                results = search_library(args.query)
+                if not results:
+                    print("No findings found in library.")
+                    return 0
+                print(f"{'ID':<12} {'SEVERITY':<10} TITLE")
+                for f in results:
+                    print(f"{f['lib_id']:<12} {f['severity'].upper():<10} {f['title']}")
+                print(f"Total: {len(results)}")
+                return 0
+
+            if args.library_command == "show":
+                f = get_from_library(args.lib_id)
+                f["id"] = args.lib_id
+                _print_finding(f)
+                return 0
+
+            if args.library_command == "save":
+                finding = get_finding(args.report, args.finding_id)
+                lib_id = save_to_library(finding)
+                print(f"Saved {args.finding_id} to library as {lib_id}.")
+                return 0
+
+            if args.library_command == "import":
+                f = get_from_library(args.lib_id)
+                f["affected_asset"] = args.affected_asset
+                if args.evidence:
+                    f["evidence"] = args.evidence
+                else:
+                    f["evidence"] = "Verified manually."
+                
+                # add_finding requires specific structure
+                added = add_finding(args.report, f)
+                print(f"Imported {args.lib_id} as {added['id']}.")
+                return 0
+
+        if args.command == "project":
+            if args.project_command == "list":
+                projects = list_projects()
+                if not projects:
+                    print("No projects found.")
+                    return 0
+                print(f"{'PROJECT':<30} {'CLIENT':<25} {'FINDINGS':<10} PATH")
+                for p in projects:
+                    name = p["name"]
+                    if len(name) > 28:
+                        name = name[:25] + "..."
+                    client = p["client"]
+                    if len(client) > 23:
+                        client = client[:20] + "..."
+                    print(f"{name:<30} {client:<25} {p['findings_count']:<10} {p['path']}")
+                return 0
+
+        if args.command == "ui":
+            start_server(args.port)
+            return 0
+
     except PwnReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
