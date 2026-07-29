@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from . import __version__
-from .constants import FINDING_FIELDS, SEVERITIES
+from .constants import FINDING_FIELDS, REMEDIATION_STATUSES, SEVERITIES
 from .core import (
     PwnReportError,
     add_finding,
@@ -29,6 +29,11 @@ FIELD_LABELS = {
     "impact": "Impact",
     "evidence": "Evidence",
     "remediation": "Remediation",
+    "reproduction_steps": "Reproduction steps",
+    "references": "References",
+    "cvss_vector": "CVSS vector",
+    "cvss_score": "CVSS score",
+    "remediation_status": "Remediation status",
 }
 
 
@@ -72,6 +77,11 @@ def create_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--impact", help="security or business impact")
     add_parser.add_argument("--evidence", help="concise supporting evidence")
     add_parser.add_argument("--remediation", help="recommended remediation")
+    add_parser.add_argument("--reproduction-steps", help="comma-separated reproduction steps")
+    add_parser.add_argument("--references", help="comma-separated references (CWE, CVE, URL)")
+    add_parser.add_argument("--cvss-vector", help="CVSS vector string")
+    add_parser.add_argument("--cvss-score", type=float, help="CVSS base score (0.0-10.0)")
+    add_parser.add_argument("--remediation-status", choices=REMEDIATION_STATUSES, help="remediation status")
 
     list_parser = finding_subparsers.add_parser("list", help="list findings")
     list_parser.add_argument("report", type=Path, help="path to report.json")
@@ -97,7 +107,7 @@ def _required_value(label: str, supplied: Optional[str]) -> str:
 
 
 def _finding_input(args: argparse.Namespace) -> dict:
-    return {
+    finding = {
         "title": _required_value("Title", args.title),
         "severity": _required_value(
             f"Severity ({'/'.join(SEVERITIES)})", args.severity
@@ -108,6 +118,24 @@ def _finding_input(args: argparse.Namespace) -> dict:
         "evidence": _required_value("Evidence", args.evidence),
         "remediation": _required_value("Remediation", args.remediation),
     }
+
+    # Optional v0.3 fields from flags
+    if args.reproduction_steps:
+        finding["reproduction_steps"] = [
+            s.strip() for s in args.reproduction_steps.split(",") if s.strip()
+        ]
+    if args.references:
+        finding["references"] = [
+            r.strip() for r in args.references.split(",") if r.strip()
+        ]
+    if args.cvss_vector:
+        finding["cvss_vector"] = args.cvss_vector.strip()
+    if args.cvss_score is not None:
+        finding["cvss_score"] = args.cvss_score
+    if args.remediation_status:
+        finding["remediation_status"] = args.remediation_status
+
+    return finding
 
 
 def _print_field(label: str, value: Any) -> None:
@@ -120,7 +148,8 @@ def _print_field(label: str, value: Any) -> None:
 
 def _print_finding(finding: dict) -> None:
     for field in FINDING_FIELDS:
-        _print_field(FIELD_LABELS[field], finding[field])
+        if field in finding:
+            _print_field(FIELD_LABELS[field], finding[field])
 
 
 def main(argv: Optional[List[str]] = None) -> int:

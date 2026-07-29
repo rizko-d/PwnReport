@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 from .constants import (
     FINDING_FIELDS,
     PROJECT_FIELDS,
+    REMEDIATION_STATUSES,
+    REQUIRED_FINDING_FIELDS,
     SEVERITIES,
     SEVERITY_RANK,
 )
@@ -45,6 +47,8 @@ def _default_report(project_name: str) -> Dict[str, Any]:
         },
         "scope": [],
         "executive_summary": "No executive summary has been provided.",
+        "methodology": "",
+        "limitations": "",
         "findings": [],
     }
 
@@ -134,8 +138,56 @@ def validate_report(data: Dict[str, Any]) -> None:
                 errors.append(f"{location} must be an object")
                 continue
 
-            for field in FINDING_FIELDS:
+            for field in REQUIRED_FINDING_FIELDS:
                 _validate_text(finding, field, location, errors)
+
+            # Validate optional finding fields when present
+            steps = finding.get("reproduction_steps")
+            if steps is not None:
+                if not isinstance(steps, list):
+                    errors.append(f"{location}.reproduction_steps must be an array")
+                else:
+                    for i, step in enumerate(steps):
+                        if not isinstance(step, str):
+                            errors.append(
+                                f"{location}.reproduction_steps[{i}] must be a string"
+                            )
+
+            refs = finding.get("references")
+            if refs is not None:
+                if not isinstance(refs, list):
+                    errors.append(f"{location}.references must be an array")
+                else:
+                    for i, ref in enumerate(refs):
+                        if not isinstance(ref, str):
+                            errors.append(
+                                f"{location}.references[{i}] must be a string"
+                            )
+
+            cvss_score = finding.get("cvss_score")
+            if cvss_score is not None:
+                try:
+                    score = float(cvss_score)
+                    if score < 0.0 or score > 10.0:
+                        errors.append(
+                            f"{location}.cvss_score must be between 0.0 and 10.0"
+                        )
+                except (TypeError, ValueError):
+                    errors.append(
+                        f"{location}.cvss_score must be a numeric value"
+                    )
+
+            rem_status = finding.get("remediation_status")
+            if rem_status is not None:
+                if not isinstance(rem_status, str) or not rem_status.strip():
+                    errors.append(
+                        f"{location}.remediation_status must be a non-empty string"
+                    )
+                elif rem_status.strip().lower() not in REMEDIATION_STATUSES:
+                    errors.append(
+                        f"{location}.remediation_status must be one of: "
+                        + ", ".join(REMEDIATION_STATUSES)
+                    )
 
             finding_id = finding.get("id")
             if isinstance(finding_id, str) and finding_id.strip():
@@ -210,13 +262,13 @@ def next_finding_id(findings: List[Dict[str, Any]]) -> str:
     return f"FIND-{highest + 1:03d}"
 
 
-def add_finding(report_path: Path, finding_data: Dict[str, str]) -> Dict[str, str]:
+def add_finding(report_path: Path, finding_data: Dict[str, Any]) -> Dict[str, Any]:
     """Append a validated finding and atomically save the report."""
     source_path = report_path.expanduser().resolve()
     data = load_report(source_path)
     validate_report(data)
 
-    finding = {
+    finding: Dict[str, Any] = {
         "id": next_finding_id(data["findings"]),
         "title": finding_data.get("title", "").strip(),
         "severity": finding_data.get("severity", "").strip().lower(),
@@ -226,6 +278,28 @@ def add_finding(report_path: Path, finding_data: Dict[str, str]) -> Dict[str, st
         "evidence": finding_data.get("evidence", "").strip(),
         "remediation": finding_data.get("remediation", "").strip(),
     }
+
+    # Optional v0.3 fields
+    if "reproduction_steps" in finding_data:
+        steps = finding_data["reproduction_steps"]
+        if isinstance(steps, list):
+            finding["reproduction_steps"] = steps
+    if "references" in finding_data:
+        refs = finding_data["references"]
+        if isinstance(refs, list):
+            finding["references"] = refs
+    if "cvss_vector" in finding_data:
+        vector = finding_data["cvss_vector"]
+        if isinstance(vector, str) and vector.strip():
+            finding["cvss_vector"] = vector.strip()
+    if "cvss_score" in finding_data:
+        score = finding_data["cvss_score"]
+        if score is not None:
+            finding["cvss_score"] = float(score)
+    if "remediation_status" in finding_data:
+        status = finding_data["remediation_status"]
+        if isinstance(status, str) and status.strip():
+            finding["remediation_status"] = status.strip().lower()
 
     updated_data = copy.deepcopy(data)
     updated_data["findings"].append(finding)

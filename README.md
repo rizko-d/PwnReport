@@ -47,7 +47,7 @@ from another script, or use as the input for future importers.
 
 ## What PwnReport Does Not Do Yet
 
-The v0.2 release does not include scanner importers, a web interface, a
+The v0.3 release does not include scanner importers, a web interface, a
 database, authentication, CVSS calculation, or native PDF generation. These
 are intentionally deferred until the core JSON-to-HTML workflow is stable.
 
@@ -129,6 +129,17 @@ pwnreport finding add demo-report/report.json \
   --remediation "Deploy a restrictive Content Security Policy."
 ```
 
+Additional v0.3 optional flags are also available:
+
+```bash
+pwnreport finding add demo-report/report.json \
+  --reproduction-steps "Step A,Step B,Step C" \
+  --references "CWE-693,OWASP A05:2021" \
+  --cvss-vector "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" \
+  --cvss-score "9.8" \
+  --remediation-status "open"
+```
+
 PwnReport assigns IDs automatically in `FIND-001` format. It derives the next
 ID from the highest existing numeric finding ID rather than reusing deleted
 numbers.
@@ -207,7 +218,7 @@ Delivered foundation:
 
 ### v0.2 - Manual finding workflow
 
-Current release:
+Delivered:
 
 Make authoring reports easier without introducing a database:
 
@@ -220,14 +231,16 @@ Make authoring reports easier without introducing a database:
 
 ### v0.3 - Better assessment detail
 
+Current release:
+
 Extend the schema for findings that need more technical context:
 
-- [ ] Reproduction steps
-- [ ] Evidence file references and screenshots
-- [ ] CWE, CVE, and OWASP mappings
-- [ ] CVSS vector and score fields
-- [ ] Methodology and limitations sections
-- [ ] Remediation priority and status
+- [x] Reproduction steps
+- [x] Evidence file references (references field)
+- [x] CWE, CVE, and OWASP mappings (references field)
+- [x] CVSS vector and score fields
+- [x] Methodology and limitations sections
+- [x] Remediation status
 
 ### v0.4 - Scanner importers
 

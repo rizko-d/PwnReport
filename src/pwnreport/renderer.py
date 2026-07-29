@@ -39,6 +39,50 @@ def _severity_summary(findings: List[Dict[str, Any]]) -> str:
     )
 
 
+def _methodology_section(data: Dict[str, Any]) -> str:
+    methodology = data.get("methodology")
+    if not methodology or not methodology.strip():
+        return ""
+    return f"""<section aria-labelledby="methodology-title">
+        <h2 id="methodology-title">04 / Methodology</h2>
+        {_paragraphs(methodology)}
+      </section>"""
+
+
+def _limitations_section(data: Dict[str, Any]) -> str:
+    limitations = data.get("limitations")
+    if not limitations or not limitations.strip():
+        return ""
+    return f"""<section aria-labelledby="limitations-title">
+        <h2 id="limitations-title">05 / Limitations</h2>
+        {_paragraphs(limitations)}
+      </section>"""
+
+
+def _remediation_badge(finding: Dict[str, Any]) -> str:
+    """Render a remediation status badge if present."""
+    status = finding.get("remediation_status")
+    if not status:
+        return ""
+    return f"""<span class="status-badge status-{_text(status)}">{_text(status.replace("_", " ").upper())}</span>"""
+
+
+def _cvss_meta(finding: Dict[str, Any]) -> str:
+    """Render CVSS metadata rows if present."""
+    rows = []
+    score = finding.get("cvss_score")
+    vector = finding.get("cvss_vector")
+    if score is not None:
+        rows.append(
+            f"""<div><dt>CVSS Score</dt><dd>{_text(str(score))}</dd></div>"""
+        )
+    if vector:
+        rows.append(
+            f"""<div><dt>CVSS Vector</dt><dd><code>{_text(vector)}</code></dd></div>"""
+        )
+    return "".join(rows)
+
+
 def _finding_sections(findings: List[Dict[str, Any]]) -> str:
     if not findings:
         return """<section class="finding empty-state">
@@ -49,20 +93,25 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
     sections = []
     for finding in findings:
         severity = finding["severity"]
-        sections.append(
+
+        finding_blocks = [
             f"""<article class="finding severity-{severity}">
           <header class="finding-header">
             <div>
               <span class="finding-id">{_text(finding["id"])}</span>
               <h3>{_text(finding["title"])}</h3>
             </div>
-            <span class="severity-badge">{_text(severity.upper())}</span>
+            <div class="finding-header-right">
+              <span class="severity-badge">{_text(severity.upper())}</span>
+              {_remediation_badge(finding)}
+            </div>
           </header>
           <dl class="finding-meta">
             <div>
               <dt>Affected Asset</dt>
               <dd><code>{_text(finding["affected_asset"])}</code></dd>
             </div>
+            {_cvss_meta(finding)}
           </dl>
           <div class="finding-block">
             <h4>Description</h4>
@@ -71,17 +120,53 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
           <div class="finding-block">
             <h4>Impact</h4>
             {_paragraphs(finding["impact"])}
-          </div>
-          <div class="finding-block">
+          </div>"""
+        ]
+
+        # Reproduction steps (optional)
+        blocks = finding.get("reproduction_steps")
+        if blocks:
+            steps_html = "".join(
+                f"<li>{_text(step)}</li>" for step in blocks
+            )
+            finding_blocks.append(
+                f"""<div class="finding-block">
+              <h4>Reproduction Steps</h4>
+              <ol class="repro-steps">{steps_html}</ol>
+            </div>"""
+            )
+
+        # Evidence
+        finding_blocks.append(
+            f"""<div class="finding-block">
             <h4>Evidence</h4>
             <div class="evidence">{_paragraphs(finding["evidence"])}</div>
-          </div>
-          <div class="finding-block remediation">
+          </div>"""
+        )
+
+        # References (optional)
+        refs = finding.get("references")
+        if refs:
+            refs_html = "".join(
+                f"<span class=\"ref-tag\">{_text(ref)}</span>" for ref in refs
+            )
+            finding_blocks.append(
+                f"""<div class="finding-block">
+              <h4>References</h4>
+              <div class="refs">{refs_html}</div>
+            </div>"""
+            )
+
+        # Remediation
+        finding_blocks.append(
+            f"""<div class="finding-block remediation">
             <h4>Remediation</h4>
             {_paragraphs(finding["remediation"])}
           </div>
         </article>"""
         )
+
+        sections.append("".join(finding_blocks))
     return "\n".join(sections)
 
 
@@ -165,14 +250,20 @@ def render_report(data: Dict[str, Any]) -> str:
     .severity-info {{ color: var(--info); }}
     .finding {{ margin-bottom: 36px; padding: 28px; border: 1px solid var(--line); border-left: 4px solid currentColor; background: var(--panel); break-inside: avoid; }}
     .finding-header {{ display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; padding-bottom: 22px; border-bottom: 1px solid var(--line); }}
+    .finding-header-right {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
     .finding-id {{ color: var(--muted); font-size: 12px; }}
     .severity-badge {{ flex: 0 0 auto; border: 1px solid currentColor; padding: 4px 9px; font-size: 11px; font-weight: 700; }}
+    .status-badge {{ flex: 0 0 auto; padding: 4px 9px; font-size: 11px; font-weight: 700; background: var(--panel); border: 1px solid var(--line); }}
     .finding-meta {{ margin: 20px 0 26px; }}
     .finding-meta dt {{ color: var(--muted); font-size: 11px; text-transform: uppercase; }}
     .finding-meta dd {{ margin: 4px 0 0; }}
     .finding-block {{ color: var(--text); margin-top: 25px; }}
     .evidence {{ padding: 16px 18px; border-left: 2px solid var(--blue); background: #0a0c10; }}
     .remediation {{ padding-top: 20px; border-top: 1px solid var(--line); }}
+    .repro-steps {{ margin: 0; padding-left: 22px; }}
+    .repro-steps li {{ padding: 4px 0; }}
+    .refs {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .ref-tag {{ display: inline-block; padding: 3px 8px; font-size: 11px; border: 1px solid var(--blue); color: var(--blue); }}
     .empty-state {{ color: var(--muted); }}
     footer {{ padding: 30px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }}
     @media (max-width: 720px) {{
@@ -228,14 +319,17 @@ def render_report(data: Dict[str, Any]) -> str:
         {_paragraphs(data["executive_summary"])}
       </section>
 
+      {_methodology_section(data)}
+      {_limitations_section(data)}
+
       <section aria-labelledby="summary-title">
-        <h2 id="summary-title">04 / Severity Summary</h2>
+        <h2 id="summary-title">06 / Severity Summary</h2>
         <p class="muted">{total_findings} {total_label} recorded.</p>
         <div class="summary-grid">{_severity_summary(findings)}</div>
       </section>
 
       <section aria-labelledby="findings-title">
-        <h2 id="findings-title">05 / Findings</h2>
+        <h2 id="findings-title">07 / Findings</h2>
         {_finding_sections(findings)}
       </section>
     </main>
