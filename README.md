@@ -102,7 +102,10 @@ pwnreport import nmap <report.json> <source.xml>
 pwnreport import nessus <report.json> <source.nessus>
 pwnreport import custom <report.json> <source.json>
 pwnreport build <report.json>
-pwnreport build <report.json> --output <report.html>
+pwnreport build <report.json> --format all
+pwnreport build <report.json> --format pdf --template executive
+pwnreport build <report.json> --format markdown --theme light
+pwnreport build <report.json> --format html --output custom.html
 ```
 
 `init` creates:
@@ -305,13 +308,15 @@ the final report can be traced back to the tool output.
 
 ### v0.5 - Professional exports and templates
 
-- [ ] Native PDF export
-- [ ] Markdown export
-- [ ] Table of contents
-- [ ] Client logo and branding fields
-- [ ] Report metadata and report date
-- [ ] Multiple report templates
-- [ ] Light and dark themes
+Delivered:
+
+- [x] Native PDF export
+- [x] Markdown export
+- [x] Table of contents
+- [x] Client logo and branding fields
+- [x] Report metadata and report date
+- [x] Multiple report templates
+- [x] Light and dark themes
 
 ### v1.0 - Reporting workspace
 

@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 from html import escape
-from typing import Any, Dict, Iterable, List
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
 
 from . import __version__
 from .constants import SEVERITIES
+from .presentation import (
+    PresentationError,
+    effective_report_config,
+    embedded_logo,
+    report_sections,
+    section_number,
+    severity_counts,
+    slugify,
+)
 
 
 def _text(value: Any) -> str:
@@ -21,6 +31,76 @@ def _paragraphs(value: str) -> str:
 def _scope_items(scope: Iterable[str]) -> str:
     items = "".join(f"<li><code>{_text(asset)}</code></li>" for asset in scope)
     return items or '<li class="muted">No assets listed.</li>'
+
+
+def _toc(sections: List[Dict[str, str]], findings: List[Dict[str, Any]]) -> str:
+    entries = []
+    for index, section in enumerate(sections, 1):
+        entries.append(
+            f'<li><a href="#{_text(section["id"])}">'
+            f'<span>{index:02d}</span>{_text(section["title"])}</a></li>'
+        )
+    finding_entries = "".join(
+        f'<li class="toc-finding"><a href="#{slugify(finding["id"])}">'
+        f'<span>{_text(finding["id"])}</span>{_text(finding["title"])}</a></li>'
+        for finding in findings
+    )
+    return (
+        '<nav class="toc" aria-label="Table of contents">'
+        '<h2>Table of Contents</h2><ol>'
+        + "".join(entries)
+        + finding_entries
+        + "</ol></nav>"
+    )
+
+
+def _branding(config: Dict[str, Any], project_root: Path) -> str:
+    branding = config["branding"]
+    logo_uri = embedded_logo(project_root, config)
+    logo = (
+        f'<img class="brand-logo" src="{_text(logo_uri)}" alt="Client logo">'
+        if logo_uri
+        else ""
+    )
+    company = branding.get("company_name", "")
+    company_html = f'<div class="brand-name">{_text(company)}</div>' if company else ""
+    return f'<div class="brand">{logo}{company_html}</div>'
+
+
+def _report_metadata(config: Dict[str, Any]) -> str:
+    rows = []
+    if config.get("date"):
+        rows.append(
+            f'<div class="meta-item"><span class="meta-label">Report Date</span>'
+            f'<span class="meta-value">{_text(config["date"])}</span></div>'
+        )
+    if config.get("version"):
+        rows.append(
+            f'<div class="meta-item"><span class="meta-label">Report Version</span>'
+            f'<span class="meta-value">{_text(config["version"])}</span></div>'
+        )
+    rows.append(
+        f'<div class="meta-item"><span class="meta-label">Template</span>'
+        f'<span class="meta-value">{_text(config["template"].title())}</span></div>'
+    )
+    return "".join(rows)
+
+
+def _theme_values(config: Dict[str, Any]) -> Dict[str, str]:
+    branding = config["branding"]
+    if config["theme"] == "light":
+        return {
+            "bg": "#FFFFFF", "panel": "#F6F8FA", "line": "#D0D7DE",
+            "text": "#1F2328", "muted": "#59636E",
+            "primary": branding["primary_color"],
+            "secondary": branding["secondary_color"],
+        }
+    return {
+        "bg": "#0A0C10", "panel": "#0F131A", "line": "#30363D",
+        "text": "#E6EDF3", "muted": "#8B949E",
+        "primary": branding["primary_color"],
+        "secondary": branding["secondary_color"],
+    }
 
 
 def _severity_summary(findings: List[Dict[str, Any]]) -> str:
@@ -39,22 +119,28 @@ def _severity_summary(findings: List[Dict[str, Any]]) -> str:
     )
 
 
-def _methodology_section(data: Dict[str, Any]) -> str:
+def _methodology_section(
+    data: Dict[str, Any], sections: List[Dict[str, str]], template: str
+) -> str:
     methodology = data.get("methodology")
-    if not methodology or not methodology.strip():
+    if template != "technical" or not methodology or not methodology.strip():
         return ""
-    return f"""<section aria-labelledby="methodology-title">
-        <h2 id="methodology-title">04 / Methodology</h2>
+    number = section_number(sections, "methodology")
+    return f"""<section id="methodology" aria-labelledby="methodology-title">
+        <h2 id="methodology-title">{number} / Methodology</h2>
         {_paragraphs(methodology)}
       </section>"""
 
 
-def _limitations_section(data: Dict[str, Any]) -> str:
+def _limitations_section(
+    data: Dict[str, Any], sections: List[Dict[str, str]], template: str
+) -> str:
     limitations = data.get("limitations")
-    if not limitations or not limitations.strip():
+    if template != "technical" or not limitations or not limitations.strip():
         return ""
-    return f"""<section aria-labelledby="limitations-title">
-        <h2 id="limitations-title">05 / Limitations</h2>
+    number = section_number(sections, "limitations")
+    return f"""<section id="limitations" aria-labelledby="limitations-title">
+        <h2 id="limitations-title">{number} / Limitations</h2>
         {_paragraphs(limitations)}
       </section>"""
 
@@ -104,7 +190,7 @@ def _source_meta(finding: Dict[str, Any]) -> str:
     return "".join(rows)
 
 
-def _finding_sections(findings: List[Dict[str, Any]]) -> str:
+def _finding_sections(findings: List[Dict[str, Any]], template: str) -> str:
     if not findings:
         return """<section class="finding empty-state">
           <h3>No findings</h3>
@@ -112,11 +198,12 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
         </section>"""
 
     sections = []
+    detailed = template == "technical"
     for finding in findings:
         severity = finding["severity"]
 
         finding_blocks = [
-            f"""<article class="finding severity-{severity}">
+            f"""<article id="{slugify(finding['id'])}" class="finding severity-{severity}">
           <header class="finding-header">
             <div>
               <span class="finding-id">{_text(finding["id"])}</span>
@@ -133,7 +220,7 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
               <dd><code>{_text(finding["affected_asset"])}</code></dd>
             </div>
             {_cvss_meta(finding)}
-            {_source_meta(finding)}
+            {_source_meta(finding) if detailed else ""}
           </dl>
           <div class="finding-block">
             <h4>Description</h4>
@@ -147,7 +234,7 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
 
         # Reproduction steps (optional)
         blocks = finding.get("reproduction_steps")
-        if blocks:
+        if detailed and blocks:
             steps_html = "".join(
                 f"<li>{_text(step)}</li>" for step in blocks
             )
@@ -158,17 +245,18 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
             </div>"""
             )
 
-        # Evidence
-        finding_blocks.append(
-            f"""<div class="finding-block">
+        # Evidence (technical template only)
+        if detailed:
+            finding_blocks.append(
+                f"""<div class="finding-block">
             <h4>Evidence</h4>
             <div class="evidence">{_paragraphs(finding["evidence"])}</div>
           </div>"""
-        )
+            )
 
         # References (optional)
         refs = finding.get("references")
-        if refs:
+        if detailed and refs:
             refs_html = "".join(
                 f"<span class=\"ref-tag\">{_text(ref)}</span>" for ref in refs
             )
@@ -192,10 +280,19 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
     return "\n".join(sections)
 
 
-def render_report(data: Dict[str, Any]) -> str:
-    """Render validated report data as one offline HTML document."""
+def render_report(
+    data: Dict[str, Any],
+    project_root: Optional[Path] = None,
+    template: Optional[str] = None,
+    theme: Optional[str] = None,
+) -> str:
+    """Render validated report data as one self-contained HTML document."""
     project = data["project"]
     findings = data["findings"]
+    root = (project_root or Path.cwd()).expanduser().resolve()
+    config = effective_report_config(data, template=template, theme=theme)
+    sections = report_sections(data, config["template"])
+    colors = _theme_values(config)
     total_findings = len(findings)
     total_label = "finding" if total_findings == 1 else "findings"
 
@@ -208,14 +305,14 @@ def render_report(data: Dict[str, Any]) -> str:
   <title>{_text(project["name"])} | Security Assessment Report</title>
   <style>
     :root {{
-      color-scheme: dark;
-      --bg: #0a0c10;
-      --panel: #0f131a;
-      --line: #30363d;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --green: #7ee787;
-      --blue: #79c0ff;
+      color-scheme: {_text(config["theme"])};
+      --bg: {colors["bg"]};
+      --panel: {colors["panel"]};
+      --line: {colors["line"]};
+      --text: {colors["text"]};
+      --muted: {colors["muted"]};
+      --green: {colors["primary"]};
+      --blue: {colors["secondary"]};
       --critical: #ff7b72;
       --high: #ffa657;
       --medium: #d29922;
@@ -247,6 +344,17 @@ def render_report(data: Dict[str, Any]) -> str:
     h1 {{ max-width: 850px; margin: 18px 0; font-size: clamp(38px, 7vw, 76px); line-height: 1.05; }}
     .subtitle {{ color: var(--muted); font-size: 18px; }}
     .classification {{ align-self: flex-start; border: 1px solid var(--green); color: var(--green); padding: 7px 12px; }}
+    .brand {{ display: flex; align-items: center; gap: 16px; min-height: 32px; }}
+    .brand-logo {{ display: block; max-width: 180px; max-height: 72px; object-fit: contain; }}
+    .brand-name {{ color: var(--green); font-size: 15px; text-transform: uppercase; letter-spacing: .1em; }}
+    .toc {{ margin: 56px 0 72px; padding: 28px; border: 1px solid var(--line); background: var(--panel); }}
+    .toc h2 {{ margin-bottom: 16px; }}
+    .toc ol {{ list-style: none; margin: 0; padding: 0; }}
+    .toc li {{ border-bottom: 1px solid var(--line); }}
+    .toc li:last-child {{ border-bottom: 0; }}
+    .toc a {{ display: grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 9px 0; color: var(--text); text-decoration: none; }}
+    .toc a span {{ color: var(--muted); }}
+    .toc-finding {{ padding-left: 24px; font-size: 12px; }}
     main {{ padding: 64px 0 100px; }}
     section {{ margin-bottom: 72px; }}
     h2 {{ margin: 0 0 28px; color: var(--blue); font-size: 22px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }}
@@ -280,7 +388,7 @@ def render_report(data: Dict[str, Any]) -> str:
     .finding-meta dt {{ color: var(--muted); font-size: 11px; text-transform: uppercase; }}
     .finding-meta dd {{ margin: 4px 0 0; }}
     .finding-block {{ color: var(--text); margin-top: 25px; }}
-    .evidence {{ padding: 16px 18px; border-left: 2px solid var(--blue); background: #0a0c10; }}
+    .evidence {{ padding: 16px 18px; border-left: 2px solid var(--blue); background: var(--bg); }}
     .remediation {{ padding-top: 20px; border-top: 1px solid var(--line); }}
     .repro-steps {{ margin: 0; padding-left: 22px; }}
     .repro-steps li {{ padding: 4px 0; }}
@@ -313,6 +421,7 @@ def render_report(data: Dict[str, Any]) -> str:
   <div class="page">
     <header class="cover">
       <div>
+        {_branding(config, root)}
         <div class="eyebrow">Security Assessment Report</div>
         <h1>{_text(project["name"])}</h1>
         <div class="subtitle">Prepared for {_text(project["client"])}</div>
@@ -320,39 +429,42 @@ def render_report(data: Dict[str, Any]) -> str:
       <div class="classification">{_text(project["classification"])}</div>
     </header>
 
+    {_toc(sections, findings)}
+
     <main>
-      <section aria-labelledby="engagement-title">
-        <h2 id="engagement-title">01 / Engagement</h2>
+      <section id="engagement" aria-labelledby="engagement-title">
+        <h2 id="engagement-title">{section_number(sections, "engagement")} / Engagement</h2>
         <div class="meta-grid">
           <div class="meta-item"><span class="meta-label">Client</span><span class="meta-value">{_text(project["client"])}</span></div>
           <div class="meta-item"><span class="meta-label">Assessment Type</span><span class="meta-value">{_text(project["assessment_type"])}</span></div>
           <div class="meta-item"><span class="meta-label">Author</span><span class="meta-value">{_text(project["author"])}</span></div>
           <div class="meta-item"><span class="meta-label">Classification</span><span class="meta-value">{_text(project["classification"])}</span></div>
+          {_report_metadata(config)}
         </div>
       </section>
 
-      <section aria-labelledby="scope-title">
-        <h2 id="scope-title">02 / Scope</h2>
+      <section id="scope" aria-labelledby="scope-title">
+        <h2 id="scope-title">{section_number(sections, "scope")} / Scope</h2>
         <ul class="scope-list">{_scope_items(data["scope"])}</ul>
       </section>
 
-      <section aria-labelledby="executive-title">
-        <h2 id="executive-title">03 / Executive Summary</h2>
+      <section id="executive-summary" aria-labelledby="executive-title">
+        <h2 id="executive-title">{section_number(sections, "executive-summary")} / Executive Summary</h2>
         {_paragraphs(data["executive_summary"])}
       </section>
 
-      {_methodology_section(data)}
-      {_limitations_section(data)}
+      {_methodology_section(data, sections, config["template"])}
+      {_limitations_section(data, sections, config["template"])}
 
-      <section aria-labelledby="summary-title">
-        <h2 id="summary-title">06 / Severity Summary</h2>
+      <section id="severity-summary" aria-labelledby="summary-title">
+        <h2 id="summary-title">{section_number(sections, "severity-summary")} / Severity Summary</h2>
         <p class="muted">{total_findings} {total_label} recorded.</p>
         <div class="summary-grid">{_severity_summary(findings)}</div>
       </section>
 
-      <section aria-labelledby="findings-title">
-        <h2 id="findings-title">07 / Findings</h2>
-        {_finding_sections(findings)}
+      <section id="findings" aria-labelledby="findings-title">
+        <h2 id="findings-title">{section_number(sections, "findings")} / Findings</h2>
+        {_finding_sections(findings, config["template"])}
       </section>
     </main>
 

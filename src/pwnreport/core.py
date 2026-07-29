@@ -15,12 +15,18 @@ from typing import Any, Dict, List, Optional
 from .constants import (
     FINDING_FIELDS,
     PROJECT_FIELDS,
+    EXPORT_FORMATS,
     REMEDIATION_STATUSES,
+    REPORT_TEMPLATES,
+    REPORT_THEMES,
     REQUIRED_FINDING_FIELDS,
     SEVERITIES,
     SEVERITY_RANK,
 )
 from .importers import ImporterError, parse_import
+from .markdown_renderer import render_markdown
+from .pdf_renderer import render_pdf
+from .presentation import PresentationError
 from .renderer import render_report
 
 FINDING_ID_PATTERN = re.compile(r"^FIND-(\d+)$", re.IGNORECASE)
@@ -51,6 +57,18 @@ def _default_report(project_name: str) -> Dict[str, Any]:
         "executive_summary": "No executive summary has been provided.",
         "methodology": "",
         "limitations": "",
+        "report": {
+            "date": "",
+            "version": "1.0",
+            "template": "technical",
+            "theme": "dark",
+            "branding": {
+                "company_name": "",
+                "logo": "",
+                "primary_color": "#7EE787",
+                "secondary_color": "#79C0FF",
+            },
+        },
         "findings": [],
     }
 
@@ -128,6 +146,71 @@ def validate_report(data: Dict[str, Any]) -> None:
                 errors.append(f"scope[{index}] must be a non-empty string")
 
     _validate_text(data, "executive_summary", "report", errors)
+
+    for field in ("methodology", "limitations"):
+        value = data.get(field)
+        if value is not None and not isinstance(value, str):
+            errors.append(f"report.{field} must be a string")
+
+    report_config = data.get("report")
+    if report_config is not None:
+        if not isinstance(report_config, dict):
+            errors.append("report must be an object")
+        else:
+            report_date = report_config.get("date")
+            if report_date is not None:
+                if not isinstance(report_date, str):
+                    errors.append("report.date must be a string")
+                elif report_date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", report_date):
+                    errors.append("report.date must use YYYY-MM-DD format")
+            report_version = report_config.get("version")
+            if report_version is not None and (
+                not isinstance(report_version, str) or not report_version.strip()
+            ):
+                errors.append("report.version must be a non-empty string")
+            template = report_config.get("template")
+            if template is not None and template not in REPORT_TEMPLATES:
+                errors.append(
+                    "report.template must be one of: " + ", ".join(REPORT_TEMPLATES)
+                )
+            theme = report_config.get("theme")
+            if theme is not None and theme not in REPORT_THEMES:
+                errors.append(
+                    "report.theme must be one of: " + ", ".join(REPORT_THEMES)
+                )
+            branding = report_config.get("branding")
+            if branding is not None:
+                if not isinstance(branding, dict):
+                    errors.append("report.branding must be an object")
+                else:
+                    company_name = branding.get("company_name")
+                    if company_name is not None and not isinstance(company_name, str):
+                        errors.append("report.branding.company_name must be a string")
+                    for key in ("primary_color", "secondary_color"):
+                        color = branding.get(key)
+                        if color is not None and (
+                            not isinstance(color, str)
+                            or not re.fullmatch(r"#[0-9A-Fa-f]{6}", color)
+                        ):
+                            errors.append(
+                                f"report.branding.{key} must be a six-digit hex color"
+                            )
+                    logo = branding.get("logo")
+                    if logo is not None:
+                        if not isinstance(logo, str):
+                            errors.append("report.branding.logo must be a string")
+                        elif logo:
+                            logo_path = Path(logo)
+                            if logo_path.is_absolute() or ".." in logo_path.parts:
+                                errors.append(
+                                    "report.branding.logo must be a safe relative path"
+                                )
+                            elif logo_path.suffix.lower() not in (
+                                ".png", ".jpg", ".jpeg", ".gif", ".svg"
+                            ):
+                                errors.append(
+                                    "report.branding.logo must use PNG, JPEG, GIF, or SVG"
+                                )
 
     findings = data.get("findings")
     if not isinstance(findings, list):
@@ -433,28 +516,98 @@ def get_finding(report_path: Path, finding_id: str) -> Dict[str, Any]:
     raise PwnReportError(f"Finding not found: {finding_id}")
 
 
-def build_report(report_path: Path, output_path: Optional[Path] = None) -> Path:
-    """Validate report JSON, sort findings, and render a self-contained HTML file."""
+def _atomic_write_bytes(destination: Path, content: bytes) -> Path:
+    """Atomically write one export artifact."""
+    temporary: Optional[Path] = None
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            dir=str(destination.parent),
+        )
+        temporary = Path(temporary_name)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    except OSError as exc:
+        raise PwnReportError(f"Could not write export {destination}: {exc}") from exc
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+    return destination
+
+
+def _export_destination(
+    report_path: Path,
+    export_format: str,
+    output_path: Optional[Path],
+) -> Path:
+    extension = {"html": ".html", "pdf": ".pdf", "markdown": ".md"}[export_format]
+    if output_path is None:
+        return report_path.parent / "output" / f"report{extension}"
+    destination = output_path.expanduser().resolve()
+    if destination.suffix.lower() != extension:
+        raise PwnReportError(
+            f"{export_format} output path must use the {extension} extension"
+        )
+    return destination
+
+
+def build_exports(
+    report_path: Path,
+    formats: List[str],
+    output_path: Optional[Path] = None,
+    template: Optional[str] = None,
+    theme: Optional[str] = None,
+) -> Dict[str, Path]:
+    """Validate once and build one or more report formats."""
     source_path = report_path.expanduser().resolve()
     data = load_report(source_path)
     validate_report(data)
+    requested = list(dict.fromkeys(formats))
+    if not requested:
+        raise PwnReportError("At least one export format is required")
+    invalid = [item for item in requested if item not in EXPORT_FORMATS]
+    if invalid:
+        raise PwnReportError(f"Unsupported export format: {invalid[0]}")
+    if output_path is not None and len(requested) != 1:
+        raise PwnReportError("--output can only be used with one export format")
 
     render_data = copy.deepcopy(data)
     render_data["findings"] = sorted(
         render_data["findings"], key=lambda item: SEVERITY_RANK[item["severity"]]
     )
-
-    if output_path is None:
-        destination = source_path.parent / "output" / "report.html"
-    else:
-        destination = output_path.expanduser().resolve()
-        if destination.suffix.lower() != ".html":
-            raise PwnReportError("Output path must use the .html extension")
-
+    artifacts: Dict[str, Path] = {}
     try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(render_report(render_data), encoding="utf-8")
-    except OSError as exc:
-        raise PwnReportError(f"Could not write HTML report: {exc}") from exc
+        for export_format in requested:
+            destination = _export_destination(source_path, export_format, output_path)
+            if export_format == "html":
+                content = render_report(
+                    render_data,
+                    project_root=source_path.parent,
+                    template=template,
+                    theme=theme,
+                ).encode("utf-8")
+            elif export_format == "markdown":
+                content = render_markdown(
+                    render_data, template=template, theme=theme
+                ).encode("utf-8")
+            else:
+                content = render_pdf(render_data, template=template, theme=theme)
+            artifacts[export_format] = _atomic_write_bytes(destination, content)
+    except PresentationError as exc:
+        raise PwnReportError(str(exc)) from exc
+    return artifacts
 
-    return destination
+
+def build_report(report_path: Path, output_path: Optional[Path] = None) -> Path:
+    """Backward-compatible HTML-only build entrypoint."""
+    return build_exports(report_path, ["html"], output_path=output_path)["html"]

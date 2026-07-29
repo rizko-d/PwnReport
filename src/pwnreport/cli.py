@@ -8,11 +8,18 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from . import __version__
-from .constants import FINDING_FIELDS, REMEDIATION_STATUSES, SEVERITIES
+from .constants import (
+    EXPORT_FORMATS,
+    FINDING_FIELDS,
+    REMEDIATION_STATUSES,
+    REPORT_TEMPLATES,
+    REPORT_THEMES,
+    SEVERITIES,
+)
 from .core import (
     PwnReportError,
     add_finding,
-    build_report,
+    build_exports,
     get_finding,
     import_findings,
     initialize_project,
@@ -50,13 +57,31 @@ def create_parser() -> argparse.ArgumentParser:
     init_parser = subparsers.add_parser("init", help="create a minimal report workspace")
     init_parser.add_argument("destination", type=Path, help="directory to create")
 
-    build_parser = subparsers.add_parser("build", help="validate JSON and build HTML")
+    build_parser = subparsers.add_parser(
+        "build", help="validate JSON and build report exports"
+    )
     build_parser.add_argument("report", type=Path, help="path to report.json")
+    build_parser.add_argument(
+        "--format",
+        choices=(*EXPORT_FORMATS, "all"),
+        default="html",
+        help="export format (default: html)",
+    )
+    build_parser.add_argument(
+        "--template",
+        choices=REPORT_TEMPLATES,
+        help="override report template for this build",
+    )
+    build_parser.add_argument(
+        "--theme",
+        choices=REPORT_THEMES,
+        help="override report theme for this build",
+    )
     build_parser.add_argument(
         "-o",
         "--output",
         type=Path,
-        help="HTML output path (default: <project>/output/report.html)",
+        help="custom output path for a single format",
     )
 
     validate_parser = subparsers.add_parser(
@@ -193,11 +218,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.command == "build":
             data = load_report(args.report)
             validate_report(data)
-            output_path = build_report(args.report, args.output)
+            formats = [str(f) for f in EXPORT_FORMATS] if args.format == "all" else [str(args.format)]
+            artifacts = build_exports(
+                args.report,
+                formats,
+                output_path=args.output,
+                template=args.template,
+                theme=args.theme,
+            )
             count = len(data["findings"])
             noun = "finding" if count == 1 else "findings"
             print(f"Validated {count} {noun}.")
-            print(f"Built report: {output_path}")
+            for export_format, artifact in artifacts.items():
+                print(f"Built {export_format}: {artifact}")
             return 0
 
         if args.command == "validate":
