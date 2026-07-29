@@ -30,10 +30,11 @@ PwnReport provides a small, predictable reporting pipeline:
 
 1. Create a report workspace with `pwnreport init`.
 2. Store engagement information in `report.json`.
-3. Add and inspect findings through the CLI or edit the JSON directly.
-4. Validate required fields, severity values, and unique finding IDs.
-5. Sort findings by severity.
-6. Build a self-contained HTML report with:
+3. Add findings manually or normalize scanner exports through importers.
+4. Inspect findings and trace imported results back to preserved source files.
+5. Validate required fields, severity values, and unique finding IDs.
+6. Sort findings by severity.
+7. Build a self-contained HTML report with:
    - Cover page
    - Engagement information
    - Assessment scope
@@ -43,13 +44,13 @@ PwnReport provides a small, predictable reporting pipeline:
 
 This approach is useful when the priority is a stable report format rather
 than a large platform. The JSON file remains easy to review in Git, generate
-from another script, or use as the input for future importers.
+from another script, or enrich through scanner importers.
 
 ## What PwnReport Does Not Do Yet
 
-The v0.3 release does not include scanner importers, a web interface, a
-database, authentication, CVSS calculation, or native PDF generation. These
-are intentionally deferred until the core JSON-to-HTML workflow is stable.
+The v0.4 release does not include a web interface, database, authentication,
+native PDF generation, report templates, or collaboration features. PwnReport
+imports scanner results but does not perform scanning or exploitation itself.
 
 ## Requirements
 
@@ -67,6 +68,7 @@ python -m pip install -e .
 
 pwnreport init demo-report
 pwnreport finding add demo-report/report.json
+pwnreport import nuclei demo-report/report.json nuclei-results.jsonl
 pwnreport validate demo-report/report.json
 pwnreport build demo-report/report.json
 ```
@@ -94,6 +96,11 @@ pwnreport validate <report.json>
 pwnreport finding add <report.json>
 pwnreport finding list <report.json>
 pwnreport finding show <report.json> <finding-id>
+pwnreport import nuclei <report.json> <source.jsonl>
+pwnreport import burp <report.json> <source.xml>
+pwnreport import nmap <report.json> <source.xml>
+pwnreport import nessus <report.json> <source.nessus>
+pwnreport import custom <report.json> <source.json>
 pwnreport build <report.json>
 pwnreport build <report.json> --output <report.html>
 ```
@@ -157,6 +164,44 @@ beside `report.json`, flushes it to disk, and atomically replaces the original.
 Unknown JSON fields are preserved, so adding a finding does not discard custom
 metadata maintained by another tool.
 
+### Scanner import workflow
+
+PwnReport v0.4 normalizes five common export formats:
+
+| Importer | Supported input | Normalization behavior |
+|----------|-----------------|------------------------|
+| Nuclei | JSONL or JSON array | Template metadata, severity, matched asset, evidence, CVSS, CWE/CVE |
+| Burp Suite | XML issue export | Issue detail, request/response evidence, confidence, remediation |
+| Nmap | XML | One informational finding for each open port and service |
+| Nessus | `.nessus` XML | Plugin result, host/port, risk, output, CVSS, CWE/CVE |
+| Custom | JSON object, array, or `findings[]` | Common aliases such as `name`, `host`, `proof`, and `recommendation` |
+
+Examples:
+
+```bash
+pwnreport import nuclei demo-report/report.json nuclei-results.jsonl
+pwnreport import burp demo-report/report.json burp-issues.xml
+pwnreport import nmap demo-report/report.json nmap-results.xml
+pwnreport import nessus demo-report/report.json assessment.nessus
+pwnreport import custom demo-report/report.json custom-findings.json
+```
+
+Every imported finding receives a new `FIND-NNN` ID and provenance metadata:
+
+```json
+"source": {
+  "tool": "nuclei",
+  "source_id": "missing-csp",
+  "file": "imports/nuclei/nuclei-results.jsonl"
+}
+```
+
+The original export is copied into `imports/<tool>/` without overwriting a
+previous import. Parsing and combined-report validation complete before the
+source is published or `report.json` is changed. If the report save fails, the
+new source copy is removed. XML containing `DOCTYPE` or `ENTITY` declarations
+is rejected, and import files are limited to 25 MiB.
+
 ## Report schema
 
 The initial template is intentionally small:
@@ -195,8 +240,9 @@ Allowed severity values, in report order:
 critical, high, medium, low, info
 ```
 
-All project fields and all finding fields are required. Finding IDs must be
-unique, and invalid input stops the build with a readable validation error.
+All project fields and the eight core finding fields are required. The v0.3
+detail fields and v0.4 `source` provenance object are optional. Finding IDs
+must be unique, and invalid input stops the operation with a readable error.
 
 ## Feature Roadmap
 
@@ -231,7 +277,7 @@ Make authoring reports easier without introducing a database:
 
 ### v0.3 - Better assessment detail
 
-Current release:
+Delivered:
 
 Extend the schema for findings that need more technical context:
 
@@ -244,14 +290,15 @@ Extend the schema for findings that need more technical context:
 
 ### v0.4 - Scanner importers
 
-Normalize common tool output into the PwnReport schema. Importers should be
-added one at a time with fixtures and tests:
+Current release:
 
-- [ ] Nuclei JSONL importer
-- [ ] Burp Suite issue export importer
-- [ ] Nmap result importer
-- [ ] Nessus result importer
-- [ ] Generic custom JSON importer
+Normalize common tool output into the PwnReport schema:
+
+- [x] Nuclei JSONL importer
+- [x] Burp Suite issue export importer
+- [x] Nmap result importer
+- [x] Nessus result importer
+- [x] Generic custom JSON importer
 
 The original source files should remain available in the project workspace so
 the final report can be traced back to the tool output.

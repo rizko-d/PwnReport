@@ -6,6 +6,7 @@ import copy
 import json
 import os
 import re
+import shutil
 import stat
 import tempfile
 from pathlib import Path
@@ -19,6 +20,7 @@ from .constants import (
     SEVERITIES,
     SEVERITY_RANK,
 )
+from .importers import ImporterError, parse_import
 from .renderer import render_report
 
 FINDING_ID_PATTERN = re.compile(r"^FIND-(\d+)$", re.IGNORECASE)
@@ -189,6 +191,19 @@ def validate_report(data: Dict[str, Any]) -> None:
                         + ", ".join(REMEDIATION_STATUSES)
                     )
 
+            source = finding.get("source")
+            if source is not None:
+                if not isinstance(source, dict):
+                    errors.append(f"{location}.source must be an object")
+                else:
+                    tool = source.get("tool")
+                    if not isinstance(tool, str) or not tool.strip():
+                        errors.append(f"{location}.source.tool must be a non-empty string")
+                    for key in ("source_id", "file"):
+                        value = source.get(key)
+                        if value is not None and not isinstance(value, str):
+                            errors.append(f"{location}.source.{key} must be a string")
+
             finding_id = finding.get("id")
             if isinstance(finding_id, str) and finding_id.strip():
                 normalized_id = finding_id.strip().casefold()
@@ -305,6 +320,96 @@ def add_finding(report_path: Path, finding_data: Dict[str, Any]) -> Dict[str, An
     updated_data["findings"].append(finding)
     save_report(source_path, updated_data)
     return finding
+
+
+def _import_archive_path(report_path: Path, tool: str, source: Path) -> Path:
+    """Return a non-overwriting path under imports/<tool>/ for the source export."""
+    directory = report_path.parent / "imports" / tool
+    directory.mkdir(parents=True, exist_ok=True)
+    name = source.name or f"{tool}-import"
+    candidate = directory / name
+    counter = 2
+    while candidate.exists():
+        candidate = directory / f"{source.stem}-{counter}{source.suffix}"
+        counter += 1
+    return candidate
+
+
+def _atomic_copy_import(source: Path, destination: Path) -> Path:
+    """Copy an import source atomically without overwriting an existing archive."""
+    temporary: Optional[Path] = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            dir=str(destination.parent),
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        shutil.copyfile(source, temporary)
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    except OSError as exc:
+        raise PwnReportError(f"Could not preserve import source: {exc}") from exc
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+    return destination
+
+
+def import_findings(report_path: Path, tool: str, source_path: Path) -> Dict[str, Any]:
+    """Parse, normalize, archive, and atomically append scanner findings."""
+    report = report_path.expanduser().resolve()
+    source = source_path.expanduser().resolve()
+    data = load_report(report)
+    validate_report(data)
+
+    try:
+        parsed = parse_import(tool, source)
+    except ImporterError as exc:
+        raise PwnReportError(str(exc)) from exc
+
+    updated = copy.deepcopy(data)
+    assigned: List[Dict[str, Any]] = []
+    next_number = int(next_finding_id(updated["findings"]).split("-")[1])
+    for offset, raw_finding in enumerate(parsed):
+        finding = copy.deepcopy(raw_finding)
+        finding["id"] = f"FIND-{next_number + offset:03d}"
+        assigned.append(finding)
+        updated["findings"].append(finding)
+
+    # Validate the entire combined report before any side effect occurs.
+    validate_report(updated)
+    archive = _import_archive_path(report, tool, source)
+    relative_archive = archive.relative_to(report.parent).as_posix()
+    for finding in assigned:
+        source_meta = finding.setdefault("source", {"tool": tool})
+        source_meta["file"] = relative_archive
+
+    # Validate provenance added above before publishing files.
+    validate_report(updated)
+    _atomic_copy_import(source, archive)
+    try:
+        save_report(report, updated)
+    except Exception:
+        try:
+            archive.unlink()
+        except OSError:
+            pass
+        raise
+
+    return {
+        "tool": tool,
+        "count": len(assigned),
+        "findings": assigned,
+        "source": archive,
+    }
 
 
 def list_findings(report_path: Path) -> List[Dict[str, Any]]:

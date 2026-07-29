@@ -117,7 +117,7 @@ class PwnReportTests(unittest.TestCase):
         self.assertLess(html.index("High issue"), html.index("Low issue"))
         self.assertIn("Assessment &lt;2026&gt;", html)
         self.assertIn("ACME &amp; Co.", html)
-        self.assertIn('<meta name="generator" content="PwnReport 0.3.0">', html)
+        self.assertIn('<meta name="generator" content="PwnReport 0.4.0">', html)
         self.assertIn('<span class="metric-value">1</span>', html)
 
     def test_build_empty_report_renders_empty_state(self):

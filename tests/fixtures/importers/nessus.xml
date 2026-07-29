@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<NessusClientData_v2><Report name="demo"><ReportHost name="192.0.2.30"><HostProperties>
+<tag name="host-ip">192.0.2.30</tag><tag name="host-fqdn">db.example.test</tag></HostProperties>
+<ReportItem port="5432" svc_name="postgresql" protocol="tcp" severity="3" pluginID="100001" pluginName="Outdated PostgreSQL">
+<risk_factor>High</risk_factor><synopsis>Database version is outdated.</synopsis><description>The remote database is no longer supported.</description>
+<solution>Upgrade PostgreSQL.</solution><plugin_output>PostgreSQL 10 detected</plugin_output><cve>CVE-2024-0001</cve><cwe>CWE-1104</cwe>
+<cvss3_base_score>8.1</cvss3_base_score><cvss3_vector>CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H</cvss3_vector>
+</ReportItem></ReportHost></Report></NessusClientData_v2>

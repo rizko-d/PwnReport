@@ -83,6 +83,27 @@ def _cvss_meta(finding: Dict[str, Any]) -> str:
     return "".join(rows)
 
 
+def _source_meta(finding: Dict[str, Any]) -> str:
+    """Render scanner provenance when a finding was imported."""
+    source = finding.get("source")
+    if not isinstance(source, dict):
+        return ""
+    rows = []
+    if source.get("tool"):
+        rows.append(
+            f"""<div><dt>Source Tool</dt><dd>{_text(source['tool'])}</dd></div>"""
+        )
+    if source.get("source_id"):
+        rows.append(
+            f"""<div><dt>Source ID</dt><dd><code>{_text(source['source_id'])}</code></dd></div>"""
+        )
+    if source.get("file"):
+        rows.append(
+            f"""<div><dt>Source File</dt><dd><code>{_text(source['file'])}</code></dd></div>"""
+        )
+    return "".join(rows)
+
+
 def _finding_sections(findings: List[Dict[str, Any]]) -> str:
     if not findings:
         return """<section class="finding empty-state">
@@ -112,6 +133,7 @@ def _finding_sections(findings: List[Dict[str, Any]]) -> str:
               <dd><code>{_text(finding["affected_asset"])}</code></dd>
             </div>
             {_cvss_meta(finding)}
+            {_source_meta(finding)}
           </dl>
           <div class="finding-block">
             <h4>Description</h4>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues burpVersion="2026.1">
+  <issue>
+    <serialNumber>123</serialNumber><type>5244416</type>
+    <name>Reflected cross-site scripting</name><host ip="192.0.2.10">https://app.example.test</host>
+    <path>/search</path><location>https://app.example.test/search?q=test</location>
+    <severity>High</severity><confidence>Certain</confidence>
+    <issueBackground>XSS allows script execution.</issueBackground>
+    <issueDetail>Input was reflected without encoding.</issueDetail>
+    <remediationDetail>Apply context-aware output encoding.</remediationDetail>
+    <requestresponse><request base64="true">R0VUIC9zZWFyY2g/cT10ZXN0IEhUVFAvMS4x</request><response base64="true">SFRUUC8xLjEgMjAwIE9L</response></requestresponse>
+  </issue>
+</issues>

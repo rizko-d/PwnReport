@@ -14,6 +14,7 @@ from .core import (
     add_finding,
     build_report,
     get_finding,
+    import_findings,
     initialize_project,
     list_findings,
     load_report,
@@ -90,6 +91,24 @@ def create_parser() -> argparse.ArgumentParser:
     show_parser.add_argument("report", type=Path, help="path to report.json")
     show_parser.add_argument("finding_id", help="finding ID, for example FIND-001")
 
+    import_parser = subparsers.add_parser(
+        "import", help="import findings from scanner output"
+    )
+    import_subparsers = import_parser.add_subparsers(
+        dest="import_tool", required=True
+    )
+    import_help = {
+        "nuclei": "import Nuclei JSONL or JSON",
+        "burp": "import Burp Suite XML",
+        "nmap": "import Nmap XML",
+        "nessus": "import Nessus .nessus XML",
+        "custom": "import generic JSON findings",
+    }
+    for tool, help_text in import_help.items():
+        tool_parser = import_subparsers.add_parser(tool, help=help_text)
+        tool_parser.add_argument("report", type=Path, help="path to report.json")
+        tool_parser.add_argument("source", type=Path, help="scanner export file")
+
     return parser
 
 
@@ -150,6 +169,13 @@ def _print_finding(finding: dict) -> None:
     for field in FINDING_FIELDS:
         if field in finding:
             _print_field(FIELD_LABELS[field], finding[field])
+    source = finding.get("source")
+    if isinstance(source, dict):
+        _print_field("Source tool", source.get("tool", ""))
+        if source.get("source_id"):
+            _print_field("Source ID", source["source_id"])
+        if source.get("file"):
+            _print_field("Source file", source["file"])
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -207,6 +233,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.finding_command == "show":
                 _print_finding(get_finding(args.report, args.finding_id))
                 return 0
+
+        if args.command == "import":
+            result = import_findings(args.report, args.import_tool, args.source)
+            findings = result["findings"]
+            first_id = findings[0]["id"]
+            last_id = findings[-1]["id"]
+            id_range = first_id if first_id == last_id else f"{first_id}..{last_id}"
+            print(
+                f"Imported {result['count']} findings from "
+                f"{result['tool']} ({id_range})."
+            )
+            print(f"Preserved source: {result['source']}")
+            return 0
     except PwnReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
